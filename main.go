@@ -1,17 +1,13 @@
 package main
 
 import (
+	"github.com/abh1shekyadav/url-shortener/routes"
 	"github.com/gin-gonic/gin"
 )
 
 func main() {
 	r := gin.Default()
 
-	r.GET("/", func(c *gin.Context) {
-		c.JSON(200, gin.H{
-			"message": "Hello, URL shortener!",
-		})
-	})
-
-	r.Run(":8080") // Start server on port 8080
+	routes.RegisterRoutes(r)
+	r.Run(":8080")
 }
