@@ -11,4 +11,5 @@ func RegisterRoutes(r *gin.Engine) {
 	})
 	r.POST("/shorten", controllers.ShortenURL)
 	r.GET("/:code", controllers.ResolveURL)
+	r.GET("/stats/:code", controllers.GetStats)
 }

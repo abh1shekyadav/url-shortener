@@ -3,12 +3,21 @@ package controllers
 import (
 	"net/http"
 	"strconv"
+	"sync"
 
 	"github.com/gin-gonic/gin"
 )
 
-var urlStore = make(map[string]string)
-var idCounter = 1
+type URLData struct {
+	OriginalURL string `json:"original_url"`
+	ClickCount  int    `json:"click_count"`
+}
+
+var (
+	urlStore  = make(map[string]*URLData)
+	idCounter = 1
+	mu        sync.Mutex
+)
 
 func ShortenURL(c *gin.Context) {
 	var req struct {
@@ -19,18 +28,40 @@ func ShortenURL(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
 		return
 	}
+	mu.Lock()
 	code := strconv.Itoa(idCounter)
-	urlStore[code] = req.URL
 	idCounter++
+	urlStore[code] = &URLData{OriginalURL: req.URL, ClickCount: 0}
+	mu.Unlock()
 	c.JSON(http.StatusOK, gin.H{"short_url": "http://localhost:8080/" + code})
 }
 
 func ResolveURL(c *gin.Context) {
 	code := c.Param("code")
-	original, exists := urlStore[code]
+	mu.Lock()
+	data, exists := urlStore[code]
 	if !exists {
 		c.JSON(http.StatusNotFound, gin.H{"error": "URL not found"})
 		return
 	}
-	c.Redirect(http.StatusFound, original)
+	data.ClickCount++
+	mu.Unlock()
+	c.Redirect(http.StatusFound, data.OriginalURL)
+}
+
+func GetStats(c *gin.Context) {
+	code := c.Param("code")
+	mu.Lock()
+	data, exists := urlStore[code]
+	mu.Unlock()
+	if !exists {
+		c.JSON(http.StatusNotFound, gin.H{"error": "URL not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"short_code":   code,
+		"original_url": data.OriginalURL,
+		"click_count":  data.ClickCount,
+	})
+
 }
