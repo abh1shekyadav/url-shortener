@@ -1,10 +1,11 @@
 package controllers
 
 import (
+	"log"
 	"net/http"
-	"strconv"
 	"sync"
 
+	"github.com/abh1shekyadav/url-shortener/utils"
 	"github.com/gin-gonic/gin"
 )
 
@@ -14,9 +15,8 @@ type URLData struct {
 }
 
 var (
-	urlStore  = make(map[string]*URLData)
-	idCounter = 1
-	mu        sync.Mutex
+	urlStore = make(map[string]*URLData)
+	mu       sync.Mutex
 )
 
 func ShortenURL(c *gin.Context) {
@@ -29,10 +29,17 @@ func ShortenURL(c *gin.Context) {
 		return
 	}
 	mu.Lock()
-	code := strconv.Itoa(idCounter)
-	idCounter++
+	defer mu.Unlock()
+
+	var code string
+	for {
+		code = utils.GenerateShortCode()
+		if _, exists := urlStore[code]; !exists {
+			break
+		}
+	}
 	urlStore[code] = &URLData{OriginalURL: req.URL, ClickCount: 0}
-	mu.Unlock()
+	log.Println("Stored URL:", req.URL, "with code:", code)
 	c.JSON(http.StatusOK, gin.H{"short_url": "http://localhost:8080/" + code})
 }
 
