@@ -1,0 +1,30 @@
+services:
+  postgres:
+    image: postgres:16
+    platform: linux/arm64    # ✅ ARM64 support for M1/M2
+    container_name: urlshortener_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: url_shortener
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+
+  app:
+    build: .
+    platform: linux/arm64    # ✅ ensure image matches Postgres arch
+    container_name: urlshortener_app
+    restart: always
+    depends_on:
+      - postgres
+    environment:
+      - DATABASE_URL=postgres://postgres:password@postgres:5432/url_shortener
+    ports:
+      - "8080:8080"
+    command: ["/bin/sh", "-c", "sleep 5 && ./url-shortener"]
+
+volumes:
+  pg_data:
