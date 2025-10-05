@@ -1,23 +1,15 @@
 package controllers
 
 import (
-	"log"
+	"context"
 	"net/http"
-	"sync"
 
-	"github.com/abh1shekyadav/url-shortener/utils"
+	"github.com/abh1shekyadav/url-shortener/repositories"
+	"github.com/abh1shekyadav/url-shortener/services"
 	"github.com/gin-gonic/gin"
 )
 
-type URLData struct {
-	OriginalURL string `json:"original_url"`
-	ClickCount  int    `json:"click_count"`
-}
-
-var (
-	urlStore = make(map[string]*URLData)
-	mu       sync.Mutex
-)
+var urlService = services.NewURLService(repositories.NewPostgresURLRepository())
 
 func ShortenURL(c *gin.Context) {
 	var req struct {
@@ -28,45 +20,33 @@ func ShortenURL(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
 		return
 	}
-	mu.Lock()
-	defer mu.Unlock()
-
-	var code string
-	for {
-		code = utils.GenerateShortCode()
-		if _, exists := urlStore[code]; !exists {
-			break
-		}
+	code, err := urlService.ShortenURL(context.Background(), req.URL)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to shorten URL"})
+		return
 	}
-	urlStore[code] = &URLData{OriginalURL: req.URL, ClickCount: 0}
-	log.Println("Stored URL:", req.URL, "with code:", code)
 	c.JSON(http.StatusOK, gin.H{"short_url": "http://localhost:8080/" + code})
 }
 
 func ResolveURL(c *gin.Context) {
 	code := c.Param("code")
-	mu.Lock()
-	data, exists := urlStore[code]
-	if !exists {
+	original, err := urlService.ResolveURL(context.Background(), code)
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "URL not found"})
 		return
 	}
-	data.ClickCount++
-	mu.Unlock()
-	c.Redirect(http.StatusFound, data.OriginalURL)
+	c.Redirect(http.StatusFound, original)
 }
 
 func GetStats(c *gin.Context) {
 	code := c.Param("code")
-	mu.Lock()
-	data, exists := urlStore[code]
-	mu.Unlock()
-	if !exists {
+	data, err := urlService.GetStats(context.Background(), code)
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "URL not found"})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{
-		"short_code":   code,
+		"short_code":   data.ShortCode,
 		"original_url": data.OriginalURL,
 		"click_count":  data.ClickCount,
 	})
