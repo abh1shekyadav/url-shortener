@@ -9,7 +9,9 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-var urlService = services.NewURLService(repositories.NewPostgresURLRepository())
+var baseRepo = repositories.NewPostgresURLRepository()
+var cacheRepo = repositories.NewRedisURLRepository(baseRepo)
+var urlService = services.NewURLService(cacheRepo)
 
 func ShortenURL(c *gin.Context) {
 	var req struct {
