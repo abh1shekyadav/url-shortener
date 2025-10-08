@@ -12,9 +12,9 @@ import (
 const (
 	insertURL = `
 		INSERT INTO urls (short_code, original_url, expires_at)
-		VALUES ($1, $2, NOW() + INTERVAL '7 days')`
+		VALUES ($1, $2, $3)`
 	selectByCode = `
-		SELECT id, short_code, original_url, click_count
+		SELECT id, short_code, original_url, click_count, expires_at
 		FROM urls
 		WHERE short_code=$1 AND expires_at > NOW()`
 	updateClicks = `
@@ -23,7 +23,7 @@ const (
 		WHERE short_code=$1 AND expires_at > NOW()
 		RETURNING original_url`
 	selectStats = `
-		SELECT id, short_code, original_url, click_count
+		SELECT id, short_code, original_url, click_count, expires_at
 		FROM urls
 		WHERE short_code=$1`
 	checkExists = `
@@ -37,8 +37,8 @@ func NewPostgresURLRepository() *PostgresURLRepository {
 }
 
 func (r *PostgresURLRepository) Save(ctx context.Context, data *URLData) error {
-	log.Printf("[REPO] Inserting shortcode=%s URL=%s", data.ShortCode, data.OriginalURL)
-	_, err := config.DB.Exec(ctx, insertURL, data.ShortCode, data.OriginalURL)
+	log.Printf("[REPO] Inserting shortcode=%s URL=%s expiry=%s", data.ShortCode, data.OriginalURL, data.ExpiresAt)
+	_, err := config.DB.Exec(ctx, insertURL, data.ShortCode, data.OriginalURL, data.ExpiresAt)
 	if err != nil {
 		log.Printf("[REPO] Insert failed for code=%s: %v", data.ShortCode, err)
 	}
@@ -49,7 +49,7 @@ func (r *PostgresURLRepository) FindByCode(ctx context.Context, code string) (*U
 	log.Printf("[REPO] Looking up code=%s", code)
 	row := config.DB.QueryRow(ctx, selectByCode, code)
 	var u URLData
-	if err := row.Scan(&u.ID, &u.ShortCode, &u.OriginalURL, &u.ClickCount); err != nil {
+	if err := row.Scan(&u.ID, &u.ShortCode, &u.OriginalURL, &u.ClickCount, &u.ExpiresAt); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			log.Printf("[REPO] Code=%s not found", code)
 			return nil, nil
@@ -74,7 +74,7 @@ func (r *PostgresURLRepository) GetStats(ctx context.Context, code string) (*URL
 	log.Printf("[REPO] Getting stats for code=%s", code)
 	row := config.DB.QueryRow(ctx, selectStats, code)
 	var u URLData
-	if err := row.Scan(&u.ID, &u.ShortCode, &u.OriginalURL, &u.ClickCount); err != nil {
+	if err := row.Scan(&u.ID, &u.ShortCode, &u.OriginalURL, &u.ClickCount, &u.ExpiresAt); err != nil {
 		log.Printf("[REPO] Error fetching stats for %s: %v", code, err)
 		return nil, err
 	}

@@ -1,12 +1,16 @@
 package repositories
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 type URLData struct {
-	ID          int
-	ClickCount  int
-	ShortCode   string
-	OriginalURL string
+	ID          int       `json:"id"`
+	ClickCount  int       `json:"click_count"`
+	ShortCode   string    `json:"short_code"`
+	OriginalURL string    `json:"original_url"`
+	ExpiresAt   time.Time `json:"expires_at"`
 }
 
 type URLRepository interface {
