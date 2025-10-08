@@ -9,7 +9,9 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-var urlService = services.NewURLService(repositories.NewPostgresURLRepository())
+var baseRepo = repositories.NewPostgresURLRepository()
+var cacheRepo = repositories.NewRedisURLRepository(baseRepo)
+var urlService = services.NewURLService(cacheRepo)
 
 func ShortenURL(c *gin.Context) {
 	var req struct {
@@ -20,12 +22,13 @@ func ShortenURL(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
 		return
 	}
-	code, err := urlService.ShortenURL(context.Background(), req.URL)
+	code, data, err := urlService.ShortenURL(context.Background(), req.URL)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to shorten URL"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"short_url": "http://localhost:8080/" + code})
+	c.JSON(http.StatusOK, gin.H{"short_url": "http://localhost:8080/" + code,
+		"expires_at": data.ExpiresAt})
 }
 
 func ResolveURL(c *gin.Context) {
@@ -49,6 +52,7 @@ func GetStats(c *gin.Context) {
 		"short_code":   data.ShortCode,
 		"original_url": data.OriginalURL,
 		"click_count":  data.ClickCount,
+		"expires_at":   data.ExpiresAt,
 	})
 
 }
