@@ -7,6 +7,12 @@ import (
 	"time"
 
 	"github.com/abh1shekyadav/url-shortener/config"
+	"github.com/redis/go-redis/v9"
+)
+
+const (
+	cacheTTL     = 24 * time.Hour
+	redisKeyPref = "url:"
 )
 
 type RedisURLRepository struct {
@@ -18,21 +24,24 @@ func NewRedisURLRepository(primary URLRepository) *RedisURLRepository {
 }
 
 func (repo *RedisURLRepository) Save(ctx context.Context, data *URLData) error {
-	err := repo.primary.Save(ctx, data)
-	if err != nil {
+	if err := repo.primary.Save(ctx, data); err != nil {
 		return err
 	}
-	bytes, _ := json.Marshal(data)
-	config.RedisClient.Set(ctx, data.ShortCode, bytes, 24*time.Hour)
-	log.Printf("[CACHE] Saved %s to Redis\n", data.ShortCode)
+	repo.cacheSet(ctx, data.ShortCode, data)
 	return nil
 }
 
 func (repo *RedisURLRepository) FindByCode(ctx context.Context, code string) (*URLData, error) {
-	val, err := config.RedisClient.Get(ctx, code).Result()
+	val, err := config.RedisClient.Get(ctx, redisKeyPref+code).Result()
+	if err != nil && err != redis.Nil {
+		log.Printf("[CACHE] Redis unavailable, fallback to DB: %v", err)
+		return repo.primary.FindByCode(ctx, code)
+	}
 	if err == nil {
 		var data URLData
-		if jsonErr := json.Unmarshal([]byte(val), &data); jsonErr == nil {
+		if jsonErr := json.Unmarshal([]byte(val), &data); jsonErr != nil {
+			log.Printf("[CACHE] Invalid cache entry for %s: %v", code, jsonErr)
+		} else {
 			log.Printf("[CACHE] Hit for %s\n", code)
 			return &data, nil
 		}
@@ -40,8 +49,7 @@ func (repo *RedisURLRepository) FindByCode(ctx context.Context, code string) (*U
 	log.Printf("[CACHE] Miss for %s\n", code)
 	data, dbErr := repo.primary.FindByCode(ctx, code)
 	if dbErr == nil {
-		bytes, _ := json.Marshal(data)
-		config.RedisClient.Set(ctx, data.ShortCode, bytes, 24*time.Hour)
+		repo.cacheSet(ctx, code, data)
 	}
 	return data, dbErr
 }
@@ -49,7 +57,11 @@ func (repo *RedisURLRepository) FindByCode(ctx context.Context, code string) (*U
 func (repo *RedisURLRepository) IncrementClick(ctx context.Context, code string) (string, error) {
 	original, err := repo.primary.IncrementClick(ctx, code)
 	if err == nil {
-		config.RedisClient.Del(ctx, code)
+		go func() {
+			if delErr := config.RedisClient.Del(ctx, redisKeyPref+code).Err(); delErr != nil {
+				log.Printf("[CACHE] Failed to delete key %s: %v", code, delErr)
+			}
+		}()
 	}
 	return original, err
 }
@@ -60,4 +72,17 @@ func (repo *RedisURLRepository) GetStats(ctx context.Context, code string) (*URL
 
 func (repo *RedisURLRepository) IsCodeExists(ctx context.Context, code string) (bool, error) {
 	return repo.primary.IsCodeExists(ctx, code)
+}
+
+func (repo *RedisURLRepository) cacheSet(ctx context.Context, code string, data *URLData) {
+	bytes, err := json.Marshal(data)
+	if err != nil {
+		log.Printf("[CACHE] Failed to marshal %s: %v", code, err)
+		return
+	}
+	if err := config.RedisClient.Set(ctx, redisKeyPref+code, bytes, cacheTTL).Err(); err != nil {
+		log.Printf("[CACHE] Failed to set key %s in Redis: %v", code, err)
+	} else {
+		log.Printf("[CACHE] Saved %s to Redis", code)
+	}
 }
