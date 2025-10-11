@@ -3,6 +3,7 @@ package controllers
 import (
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/abh1shekyadav/url-shortener/repositories"
 	"github.com/abh1shekyadav/url-shortener/services"
@@ -17,7 +18,8 @@ var (
 
 func ShortenURL(c *gin.Context) {
 	var req struct {
-		URL string `json:"url" binding:"required"`
+		URL       string `json:"url" binding:"required"`
+		ExpiresAt string `json:"expires_at"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -28,8 +30,18 @@ func ShortenURL(c *gin.Context) {
 
 	ctx := c.Request.Context()
 	log.Printf("[CONTROLLER] Shorten request for URL: %s", req.URL)
+	var customExpiry *time.Time
+	if req.ExpiresAt != "" {
+		parsed, err := time.Parse(time.RFC3339, req.ExpiresAt)
+		if err != nil {
+			log.Printf("[CONTROLLER] Invalid expires_at format: %v", err)
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid expires_at format"})
+			return
+		}
+		customExpiry = &parsed
+	}
 
-	code, data, err := urlService.ShortenURL(ctx, req.URL)
+	code, data, err := urlService.ShortenURL(ctx, req.URL, customExpiry)
 	if err != nil {
 		log.Printf("[CONTROLLER] Error shortening URL: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to shorten URL"})
