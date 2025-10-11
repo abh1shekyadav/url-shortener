@@ -12,9 +12,10 @@ import (
 const (
 	insertURL = `
 		INSERT INTO urls (short_code, original_url, expires_at)
-		VALUES ($1, $2, $3)`
+		VALUES ($1, $2, $3)
+		RETURNING id, short_code, original_url, click_count, expires_at`
 	selectByCode = `
-		SELECT id, short_code, original_url, click_count, expires_at
+		SELECT id, short_code, original_url, click_count, COALESCE(expires_at, NOW())
 		FROM urls
 		WHERE short_code=$1 AND expires_at > NOW()`
 	updateClicks = `
@@ -23,7 +24,7 @@ const (
 		WHERE short_code=$1 AND expires_at > NOW()
 		RETURNING original_url`
 	selectStats = `
-		SELECT id, short_code, original_url, click_count, expires_at
+		SELECT id, short_code, original_url, click_count, COALESCE(expires_at, NOW())
 		FROM urls
 		WHERE short_code=$1`
 	checkExists = `
@@ -37,12 +38,14 @@ func NewPostgresURLRepository() *PostgresURLRepository {
 }
 
 func (r *PostgresURLRepository) Save(ctx context.Context, data *URLData) error {
-	log.Printf("[REPO] Inserting shortcode=%s URL=%s expiry=%s", data.ShortCode, data.OriginalURL, data.ExpiresAt)
-	_, err := config.DB.Exec(ctx, insertURL, data.ShortCode, data.OriginalURL, data.ExpiresAt)
-	if err != nil {
+	log.Printf("[REPO] Inserting shortcode=%s URL=%s expiry=%v", data.ShortCode, data.OriginalURL, data.ExpiresAt)
+	row := config.DB.QueryRow(ctx, insertURL, data.ShortCode, data.OriginalURL, data.ExpiresAt)
+	if err := row.Scan(&data.ID, &data.ShortCode, &data.OriginalURL, &data.ClickCount, &data.ExpiresAt); err != nil {
 		log.Printf("[REPO] Insert failed for code=%s: %v", data.ShortCode, err)
+		return err
 	}
-	return err
+	log.Printf("[REPO] Insert successful for code=%s expires_at=%v", data.ShortCode, data.ExpiresAt)
+	return nil
 }
 
 func (r *PostgresURLRepository) FindByCode(ctx context.Context, code string) (*URLData, error) {

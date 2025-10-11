@@ -1,106 +1,144 @@
+# URL Shortener Service
 
-
-# URL Shortener (Go + Gin)
-
-A simple URL shortener built in **Golang** using the **Gin** framework.  
-This project is structured to be **phase-wise**, allowing step-by-step learning and gradual enhancement.
+A robust and scalable URL shortener built in **Golang** using the **Gin** framework, with PostgreSQL for persistent storage and Redis for caching. This service generates unique Base62 short codes, tracks click counts, supports URL expiry, and includes Docker support for easy deployment.
 
 ---
 
-## Features (Phase-wise)
+## Features
 
-### Phase 1: Core Basics
-- Shorten a long URL (`POST /shorten`)
-- Retrieve the original URL (`GET /:code`)
-- Track click counts for each short URL (`GET /stats/:code`)
-- Thread-safe in-memory storage using `sync.Mutex`
-- Simple numeric short codes (`1`, `2`, `3`...)
-
-### Phase 2: Unique Short URLs
-- Random **Base62 short codes** for URLs (e.g., `Ka9L2s`)
-- Collision checking to ensure uniqueness
-
-### Upcoming Phases
-- PostgreSQL integration for persistence
-- Redis caching for faster reads
-- Scalable and distributed setup
-- Analytics and monitoring
-- User-defined/custom short URLs
+- Generate unique Base62 short codes for URLs (e.g., `Ka9L2s`)
+- Persistent storage with PostgreSQL
+- Caching with Redis for fast URL retrieval
+- Track click counts for each short URL
+- Support for URL expiration dates
+- Thread-safe and high-performance implementation
+- Docker and Docker Compose support for easy setup and deployment
 
 ---
 
-## Installation & Run
+## Technologies
 
-1. Clone the repo:
+- Go (Golang)
+- Gin Web Framework
+- PostgreSQL
+- Redis
+- Docker & Docker Compose
+
+---
+
+## Setup Instructions
+
+### Prerequisites
+
+- Docker
+- Docker Compose
+
+### Running the Service
+
+1. Clone the repository:
 
 ```bash
 git clone https://github.com/<your-username>/url-shortener.git
 cd url-shortener
 ```
 
-2. Install dependencies:
+2. Start the service with Docker Compose:
 
 ```bash
-go mod tidy
+docker-compose up --build
 ```
 
-3. Run the server:
+This will start the URL shortener service along with PostgreSQL and Redis containers.
 
-```bash
-go run main.go
-```
+3. The server will be accessible at `http://localhost:8080`.
 
-Server will start at `http://localhost:8080`.
+---
+
+## Environment Variables
+
+The following environment variables are configured via `docker-compose.yml`:
+
+- `POSTGRES_USER` — PostgreSQL username
+- `POSTGRES_PASSWORD` — PostgreSQL password
+- `POSTGRES_DB` — PostgreSQL database name
+- `REDIS_ADDR` — Redis server address
+- `REDIS_PASSWORD` — Redis password (if any)
+- `BASE_URL` — Base URL for generating short URLs (e.g., `http://localhost:8080`)
+
+You can customize these variables in the `docker-compose.yml` file as needed.
 
 ---
 
 ## API Endpoints
 
 ### 1. Shorten a URL
-- **POST** `/shorten`  
-- Request body:
+
+- **POST** `/shorten`
+
+#### Request Body
 
 ```json
 {
-  "url": "https://example.com"
+  "url": "https://example.com",
+  "expires_at": "2024-07-01T12:00:00Z"  // Optional, ISO8601 format
 }
 ```
 
-- Response:
+#### Response
 
 ```json
 {
-  "short_url": "http://localhost:8080/1"
+  "success": true,
+  "data": {
+    "short_code": "Ka9L2s",
+    "short_url": "http://localhost:8080/Ka9L2s",
+    "original_url": "https://example.com",
+    "expires_at": "2024-07-01T12:00:00Z"
+  }
 }
 ```
 
 ---
 
-### 2. Redirect
-- **GET** `/:code`  
-- Example: `http://localhost:8080/1` → redirects to `https://example.com`
+### 2. Redirect to Original URL
+
+- **GET** `/:code`
+
+Redirects to the original URL associated with the given short code.
+
+- Returns HTTP 404 if the code does not exist or the URL has expired.
 
 ---
 
 ### 3. Get URL Stats
-- **GET** `/stats/:code`  
-- Response:
+
+- **GET** `/stats/:code`
+
+#### Response
 
 ```json
 {
-  "short_code": "1",
-  "original_url": "https://example.com",
-  "click_count": 3
+  "success": true,
+  "data": {
+    "short_code": "Ka9L2s",
+    "original_url": "https://example.com",
+    "click_count": 42,
+    "expires_at": "2024-07-01T12:00:00Z"
+  }
 }
 ```
 
 ---
 
 ## Notes
-- Currently, URLs are stored in-memory; all data is lost when the server restarts.
-- Future phases will include persistent storage and caching for production readiness.
+
+- URLs are stored persistently in PostgreSQL with caching in Redis for improved performance.
+- URL expiry is enforced; expired URLs will not redirect and will return appropriate errors.
+- Docker Compose simplifies running the entire stack locally.
+- Customize environment variables in `docker-compose.yml` to suit your deployment needs.
 
 ---
 
 ## License
+
 MIT License
