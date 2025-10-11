@@ -11,7 +11,6 @@ import (
 )
 
 const (
-	cacheTTL     = 24 * time.Hour
 	redisKeyPref = "url:"
 )
 
@@ -37,16 +36,17 @@ func (repo *RedisURLRepository) FindByCode(ctx context.Context, code string) (*U
 		log.Printf("[CACHE] Redis unavailable, fallback to DB: %v", err)
 		return repo.primary.FindByCode(ctx, code)
 	}
+
 	if err == nil {
 		var data URLData
-		if jsonErr := json.Unmarshal([]byte(val), &data); jsonErr != nil {
-			log.Printf("[CACHE] Invalid cache entry for %s: %v", code, jsonErr)
-		} else {
-			log.Printf("[CACHE] Hit for %s\n", code)
+		if jsonErr := json.Unmarshal([]byte(val), &data); jsonErr == nil {
+			log.Printf("[CACHE] Hit for %s", code)
 			return &data, nil
 		}
+		log.Printf("[CACHE] Invalid cache entry for %s: %v", code, err)
 	}
-	log.Printf("[CACHE] Miss for %s\n", code)
+
+	log.Printf("[CACHE] Miss for %s", code)
 	data, dbErr := repo.primary.FindByCode(ctx, code)
 	if dbErr == nil {
 		repo.cacheSet(ctx, code, data)
@@ -57,11 +57,14 @@ func (repo *RedisURLRepository) FindByCode(ctx context.Context, code string) (*U
 func (repo *RedisURLRepository) IncrementClick(ctx context.Context, code string) (string, error) {
 	original, err := repo.primary.IncrementClick(ctx, code)
 	if err == nil {
-		go func() {
-			if delErr := config.RedisClient.Del(ctx, redisKeyPref+code).Err(); delErr != nil {
+		go func(code string) {
+			bgCtx := context.Background()
+			if delErr := config.RedisClient.Del(bgCtx, redisKeyPref+code).Err(); delErr != nil {
 				log.Printf("[CACHE] Failed to delete key %s: %v", code, delErr)
+			} else {
+				log.Printf("[CACHE] Deleted key %s from Redis", code)
 			}
-		}()
+		}(code)
 	}
 	return original, err
 }
@@ -75,14 +78,18 @@ func (repo *RedisURLRepository) IsCodeExists(ctx context.Context, code string) (
 }
 
 func (repo *RedisURLRepository) cacheSet(ctx context.Context, code string, data *URLData) {
-	bytes, err := json.Marshal(data)
-	if err != nil {
-		log.Printf("[CACHE] Failed to marshal %s: %v", code, err)
-		return
-	}
-	if err := config.RedisClient.Set(ctx, redisKeyPref+code, bytes, cacheTTL).Err(); err != nil {
-		log.Printf("[CACHE] Failed to set key %s in Redis: %v", code, err)
-	} else {
-		log.Printf("[CACHE] Saved %s to Redis", code)
-	}
+	go func(code string, data *URLData) {
+		bgCtx := context.Background()
+		bytes, err := json.Marshal(data)
+		if err != nil {
+			log.Printf("[CACHE] Failed to marshal %s: %v", code, err)
+			return
+		}
+		cacheTTL := time.Until(data.ExpiresAt)
+		if err := config.RedisClient.Set(bgCtx, redisKeyPref+code, bytes, cacheTTL).Err(); err != nil {
+			log.Printf("[CACHE] Failed to set key %s: %v", code, err)
+		} else {
+			log.Printf("[CACHE] Saved %s to Redis", code)
+		}
+	}(code, data)
 }
