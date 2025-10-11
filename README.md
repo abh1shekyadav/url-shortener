@@ -69,6 +69,25 @@ You can customize these variables in the `docker-compose.yml` file as needed.
 
 ---
 
+## Database Table
+
+The following PostgreSQL table is used to store shortened URLs, their metadata, and click statistics:
+
+```sql
+CREATE TABLE IF NOT EXISTS urls (
+    id SERIAL PRIMARY KEY,
+    short_code VARCHAR(16) UNIQUE NOT NULL,
+    original_url TEXT NOT NULL,
+    click_count INTEGER NOT NULL DEFAULT 0,
+    expires_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+```
+
+This schema ensures each short code is unique, supports optional expiry, and tracks click counts. The service automatically manages this table on startup if it does not exist.
+
+---
+
 ## API Endpoints
 
 ### 1. Shorten a URL

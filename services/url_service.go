@@ -20,7 +20,7 @@ func NewURLService(repo repositories.URLRepository) *URLService {
 	return &URLService{repo: repo}
 }
 
-func (s *URLService) ShortenURL(ctx context.Context, originalURL string) (string, *repositories.URLData, error) {
+func (s *URLService) ShortenURL(ctx context.Context, originalURL string, customExpiry *time.Time) (string, *repositories.URLData, error) {
 	var code string
 	maxRetries := 10
 
@@ -47,10 +47,14 @@ func (s *URLService) ShortenURL(ctx context.Context, originalURL string) (string
 		return "", nil, fmt.Errorf("failed to generate unique shortcode after %d attempts", maxRetries)
 	}
 
+	expiry := s.getExpiryTime()
+	if customExpiry != nil {
+		expiry = *customExpiry
+	}
 	data := &repositories.URLData{
 		ShortCode:   code,
 		OriginalURL: originalURL,
-		ExpiresAt:   s.getExpiryTime(),
+		ExpiresAt:   expiry,
 	}
 
 	if err := s.repo.Save(ctx, data); err != nil {
