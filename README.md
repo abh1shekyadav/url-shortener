@@ -82,6 +82,9 @@ CREATE TABLE IF NOT EXISTS urls (
     expires_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Optional: add an index on expires_at for faster queries on non-expired URLs
+CREATE INDEX idx_urls_expires_at ON urls (expires_at);
 ```
 
 This schema ensures each short code is unique, supports optional expiry, and tracks click counts. The service automatically manages this table on startup if it does not exist.
